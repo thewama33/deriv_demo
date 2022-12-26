@@ -1,18 +1,25 @@
 import 'dart:convert';
 
-import 'package:deriv_demo/active_sympol_model.dart';
-import 'package:deriv_demo/websockets_managert.dart';
+import 'package:deriv_demo/features/home/domain/usecases/Get_Active_Sympols.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:web_socket_channel/io.dart';
-import 'package:web_socket_channel/web_socket_channel.dart';
+import 'features/home/presentation/cubit/sockets_cubit.dart';
+import 'services/service_locator.dart';
 
-import 'bloc/sockets_cubit.dart';
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
 
-void main() => runApp(BlocProvider(
-      create: (context) => SocketsCubit(),
-      child: MyApp(),
-    ));
+  ServiceLocator.init();
+
+  runApp(MultiBlocProvider(
+    providers: [
+      BlocProvider(
+        create: (context) => SocketsCubit(),
+      ),
+    ],
+    child: MyApp(),
+  ));
+}
 
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
@@ -27,14 +34,18 @@ class _MyAppState extends State<MyApp> {
     "active_symbols": "brief",
     "product_type": "basic"
   };
-
-  IOWebSocketChannel channel =
-      IOWebSocketChannel.connect(WebSocketHelper.baseUrl);
-
+  final GetActiveSympols activeSympols =
+      GetActiveSympols(socketsRepository: getit());
   @override
   void initState() {
-    channel.sink.add(jsonEncode(_activeSympols));
+    activeSympols.addEvent(jsonEncode(_activeSympols));
     super.initState();
+  }
+
+  @override
+  void dispose() {
+    activeSympols.socketsRepository.addActiveSympolsEvents.close();
+    super.dispose();
   }
 
   @override
@@ -44,33 +55,29 @@ class _MyAppState extends State<MyApp> {
       home: Scaffold(
         floatingActionButton: FloatingActionButton(
           child: const Icon(Icons.send),
-          onPressed: () {
-            setState(() {
-              channel.sink.add(jsonEncode(_activeSympols));
-              print("Added");
-            });
-          },
+          onPressed: () {},
         ),
         appBar: AppBar(
           title: const Text('Material App Bar'),
         ),
         body: Center(
           child: StreamBuilder(
-              stream: channel.stream,
+              stream: activeSympols.execute(),
               builder: (context, snapshot) {
                 if (snapshot.hasData) {
-                  ActiveSymbolsModel model =
-                      ActiveSymbolsModel.fromJson(json.decode(snapshot.data));
-
+                  final model = snapshot.data;
                   return ListView.builder(
-                    itemCount: model.activeSymbols?.length,
+                    itemCount: model?.activeSymbols?.length,
                     itemBuilder: (context, index) => Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text("${model.activeSymbols![index].displayName}")
+                        Text(
+                            "${model?.activeSymbols?[index].marketDisplayName}")
                       ],
                     ),
                   );
+                } else if (snapshot.hasError) {
+                  return  Center(child: Text("Something Went Wront \n\n ${snapshot.error}"),);
                 } else {
                   return const Center(child: CircularProgressIndicator());
                 }
